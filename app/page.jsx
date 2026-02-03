@@ -425,34 +425,51 @@ function GroupManageModal({ groups, onClose, onSave }) {
             </div>
           ) : (
             <Reorder.Group axis="y" values={items} onReorder={handleReorder} className="group-manage-list">
-              {items.map((item) => (
-                <Reorder.Item key={item.id} value={item} className="group-manage-item glass">
-                  <div className="drag-handle" style={{ cursor: 'grab', display: 'flex', alignItems: 'center', padding: '0 8px' }}>
-                    <DragIcon width="18" height="18" className="muted" />
-                  </div>
-                  <input
-                    className={`input group-rename-input ${!item.name.trim() ? 'error' : ''}`}
-                    value={item.name}
-                    onChange={(e) => handleRename(item.id, e.target.value)}
-                    placeholder="请输入分组名称..."
-                    style={{ 
-                      flex: 1, 
-                      height: '36px', 
-                      fontSize: '14px', 
-                      background: 'rgba(0,0,0,0.2)',
-                      border: !item.name.trim() ? '1px solid var(--danger)' : 'none'
+              <AnimatePresence mode="popLayout">
+                {items.map((item) => (
+                  <Reorder.Item 
+                    key={item.id} 
+                    value={item} 
+                    className="group-manage-item glass"
+                    layout
+                    initial={{ opacity: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.98 }}
+                    transition={{
+                      type: 'spring',
+                      stiffness: 500,
+                      damping: 35,
+                      mass: 1,
+                      layout: { duration: 0.2 }
                     }}
-                  />
-                  <button 
-                    className="icon-button danger" 
-                    onClick={() => handleDeleteClick(item.id, item.name)} 
-                    title="删除分组"
-                    style={{ width: '36px', height: '36px', flexShrink: 0 }}
                   >
-                    <TrashIcon width="16" height="16" />
-                  </button>
-                </Reorder.Item>
-              ))}
+                    <div className="drag-handle" style={{ cursor: 'grab', display: 'flex', alignItems: 'center', padding: '0 8px' }}>
+                      <DragIcon width="18" height="18" className="muted" />
+                    </div>
+                    <input
+                      className={`input group-rename-input ${!item.name.trim() ? 'error' : ''}`}
+                      value={item.name}
+                      onChange={(e) => handleRename(item.id, e.target.value)}
+                      placeholder="请输入分组名称..."
+                      style={{ 
+                        flex: 1, 
+                        height: '36px', 
+                        fontSize: '14px', 
+                        background: 'rgba(0,0,0,0.2)',
+                        border: !item.name.trim() ? '1px solid var(--danger)' : 'none'
+                      }}
+                    />
+                    <button 
+                      className="icon-button danger" 
+                      onClick={() => handleDeleteClick(item.id, item.name)} 
+                      title="删除分组"
+                      style={{ width: '36px', height: '36px', flexShrink: 0 }}
+                    >
+                      <TrashIcon width="16" height="16" />
+                    </button>
+                  </Reorder.Item>
+                ))}
+              </AnimatePresence>
             </Reorder.Group>
           )}
           <button
@@ -476,7 +493,7 @@ function GroupManageModal({ groups, onClose, onSave }) {
             }}
           >
             <PlusIcon width="16" height="16" />
-            <span>新增分组行</span>
+            <span>新增分组</span>
           </button>
         </div>
 
@@ -1611,37 +1628,56 @@ export default function HomePage() {
                 data-mask-right={canRight}
               >
                 <div 
-                  className="tabs" 
-                  ref={tabsRef}
-                  onMouseDown={handleMouseDown}
-                  onMouseLeave={handleMouseLeaveOrUp}
-                  onMouseUp={handleMouseLeaveOrUp}
-                  onMouseMove={handleMouseMove}
-                  onWheel={handleWheel}
-                  onScroll={updateTabOverflow}
-                >
-                  <button
-                    className={`tab ${currentTab === 'all' ? 'active' : ''}`}
-                    onClick={() => setCurrentTab('all')}
+                    className="tabs" 
+                    ref={tabsRef}
+                    onMouseDown={handleMouseDown}
+                    onMouseLeave={handleMouseLeaveOrUp}
+                    onMouseUp={handleMouseLeaveOrUp}
+                    onMouseMove={handleMouseMove}
+                    onWheel={handleWheel}
+                    onScroll={updateTabOverflow}
                   >
-                    全部 ({funds.length})
-                  </button>
-                  <button
-                    className={`tab ${currentTab === 'fav' ? 'active' : ''}`}
-                    onClick={() => setCurrentTab('fav')}
-                  >
-                    自选 ({favorites.size})
-                  </button>
-                  {groups.map(g => (
-                    <button
-                      key={g.id}
-                      className={`tab ${currentTab === g.id ? 'active' : ''}`}
-                      onClick={() => setCurrentTab(g.id)}
-                    >
-                      {g.name} ({g.codes.length})
-                    </button>
-                  ))}
-                </div>
+                    <AnimatePresence mode="popLayout">
+                      <motion.button
+                        layout
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        key="all"
+                        className={`tab ${currentTab === 'all' ? 'active' : ''}`}
+                        onClick={() => setCurrentTab('all')}
+                        transition={{ type: 'spring', stiffness: 500, damping: 30, mass: 1 }}
+                      >
+                        全部 ({funds.length})
+                      </motion.button>
+                      <motion.button
+                        layout
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                        key="fav"
+                        className={`tab ${currentTab === 'fav' ? 'active' : ''}`}
+                        onClick={() => setCurrentTab('fav')}
+                        transition={{ type: 'spring', stiffness: 500, damping: 30, mass: 1 }}
+                      >
+                        自选 ({favorites.size})
+                      </motion.button>
+                      {groups.map(g => (
+                        <motion.button
+                          layout
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.8 }}
+                          key={g.id}
+                          className={`tab ${currentTab === g.id ? 'active' : ''}`}
+                          onClick={() => setCurrentTab(g.id)}
+                          transition={{ type: 'spring', stiffness: 500, damping: 30, mass: 1 }}
+                        >
+                          {g.name} ({g.codes.length})
+                        </motion.button>
+                      ))}
+                    </AnimatePresence>
+                  </div>
               </div>
               {groups.length > 0 && (
                 <button 
@@ -1812,16 +1848,29 @@ export default function HomePage() {
                           <>
                           <div className="row" style={{ marginBottom: 10 }}>
                             <div className="title">
-                              <button
-                                className={`icon-button fav-button ${favorites.has(f.code) ? 'active' : ''}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleFavorite(f.code);
-                                }}
-                                title={favorites.has(f.code) ? "取消自选" : "添加自选"}
-                              >
-                                <StarIcon width="18" height="18" filled={favorites.has(f.code)} />
-                              </button>
+                              {currentTab !== 'all' && currentTab !== 'fav' ? (
+                                <button
+                                  className="icon-button fav-button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeFundFromCurrentGroup(f.code);
+                                  }}
+                                  title="从当前分组移除"
+                                >
+                                  <ExitIcon width="18" height="18" style={{ transform: 'rotate(180deg)' }} />
+                                </button>
+                              ) : (
+                                <button
+                                  className={`icon-button fav-button ${favorites.has(f.code) ? 'active' : ''}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleFavorite(f.code);
+                                  }}
+                                  title={favorites.has(f.code) ? "取消自选" : "添加自选"}
+                                >
+                                  <StarIcon width="18" height="18" filled={favorites.has(f.code)} />
+                                </button>
+                              )}
                               <div className="title-text">
                                 <span>{f.name}</span>
                                 <span className="muted">#{f.code}</span>

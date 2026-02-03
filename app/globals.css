@@ -894,7 +894,7 @@ body {
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border);
-  transition: all 0.2s ease;
+  /* 移除全局 transition，避免与 Framer Motion 冲突 */
 }
 
 .group-manage-item:hover {
