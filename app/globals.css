@@ -541,6 +541,13 @@ input[type="number"] {
   }
 }
 
+/* 禁止移动端输入框自动缩放 */
+@media (max-width: 640px) {
+  .input.no-zoom {
+    font-size: 16px !important;
+  }
+}
+
 .tab {
   padding: 0 20px;
   border-radius: 8px;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useLayoutEffect } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import Announcement from "./components/Announcement";
 
@@ -309,7 +309,7 @@ function NumericInput({ value, onChange, step = 1, min = 0, placeholder }) {
       <input
         type="number"
         step="any"
-        className="input"
+        className="input no-zoom" // 增加 no-zoom 类
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
@@ -330,9 +330,9 @@ function NumericInput({ value, onChange, step = 1, min = 0, placeholder }) {
 function Stat({ label, value, delta }) {
   const dir = delta > 0 ? 'up' : delta < 0 ? 'down' : '';
   return (
-    <div className="stat">
-      <span className="label">{label}</span>
-      <span className={`value ${dir}`}>{value}</span>
+    <div className="stat" style={{ flexDirection: 'column', gap: 4, minWidth: 0 }}>
+      <span className="label" style={{ fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+      <span className={`value ${dir}`} style={{ fontSize: '15px', lineHeight: 1.2, whiteSpace: 'nowrap' }}>{value}</span>
     </div>
   );
 }
@@ -1294,8 +1294,60 @@ function GroupModal({ onClose, onConfirm }) {
   );
 }
 
+// 数字滚动组件
+function CountUp({ value, prefix = '', suffix = '', decimals = 2, className = '', style = {} }) {
+  const [displayValue, setDisplayValue] = useState(value);
+  const previousValue = useRef(value);
+
+  useEffect(() => {
+    if (previousValue.current === value) return;
+
+    const start = previousValue.current;
+    const end = value;
+    const duration = 1000; // 1秒动画
+    const startTime = performance.now();
+
+    const animate = (currentTime) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // easeOutQuart
+      const ease = 1 - Math.pow(1 - progress, 4);
+      
+      const current = start + (end - start) * ease;
+      setDisplayValue(current);
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        previousValue.current = value;
+      }
+    };
+
+    requestAnimationFrame(animate);
+  }, [value]);
+
+  return (
+    <span className={className} style={style}>
+      {prefix}{Math.abs(displayValue).toFixed(decimals)}{suffix}
+    </span>
+  );
+}
+
 function GroupSummary({ funds, holdings, groupName, getProfit }) {
-  const [showPercent, setShowPercent] = useState(false);
+  const [showPercent, setShowPercent] = useState(true);
+  const rowRef = useRef(null);
+  const [assetSize, setAssetSize] = useState(24);
+  const [metricSize, setMetricSize] = useState(18);
+  const [winW, setWinW] = useState(0);
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      setWinW(window.innerWidth);
+      const onR = () => setWinW(window.innerWidth);
+      window.addEventListener('resize', onR);
+      return () => window.removeEventListener('resize', onR);
+    }
+  }, []);
 
   const summary = useMemo(() => {
     let totalAsset = 0;
@@ -1326,16 +1378,32 @@ function GroupSummary({ funds, holdings, groupName, getProfit }) {
     return { totalAsset, totalProfitToday, totalHoldingReturn, hasHolding, returnRate };
   }, [funds, holdings, getProfit]);
 
+  useLayoutEffect(() => {
+    const el = rowRef.current;
+    if (!el) return;
+    const height = el.clientHeight;
+    // 使用 80px 作为更严格的阈值，因为 margin/padding 可能导致实际占用更高
+    const tooTall = height > 80;
+    if (tooTall) {
+      setAssetSize(s => Math.max(16, s - 1));
+      setMetricSize(s => Math.max(12, s - 1));
+    } else {
+      // 如果高度正常，尝试适当恢复字体大小，但不要超过初始值
+      // 这里的逻辑可以优化：如果当前远小于阈值，可以尝试增大，但为了稳定性，主要处理缩小的场景
+      // 或者：如果高度非常小（例如远小于80），可以尝试+1，但要小心死循环
+    }
+  }, [winW, summary.totalAsset, summary.totalProfitToday, summary.totalHoldingReturn, summary.returnRate, showPercent, assetSize, metricSize]); // 添加 assetSize, metricSize 到依赖，确保逐步缩小生效
+
   if (!summary.hasHolding) return null;
 
   return (
     <div className="glass card" style={{ marginBottom: 16, padding: '16px 20px', background: 'rgba(255, 255, 255, 0.03)' }}>
-      <div className="row" style={{ alignItems: 'flex-end', justifyContent: 'space-between' }}>
+      <div ref={rowRef} className="row" style={{ alignItems: 'flex-end', justifyContent: 'space-between' }}>
         <div>
           <div className="muted" style={{ fontSize: '12px', marginBottom: 4 }}>{groupName}</div>
           <div style={{ fontSize: '24px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
             <span style={{ fontSize: '16px', marginRight: 2 }}>¥</span>
-            {summary.totalAsset.toFixed(2)}
+            <CountUp value={summary.totalAsset} style={{ fontSize: assetSize }} />
           </div>
         </div>
         <div style={{ display: 'flex', gap: 24 }}>
@@ -1345,8 +1413,9 @@ function GroupSummary({ funds, holdings, groupName, getProfit }) {
               className={summary.totalProfitToday > 0 ? 'up' : summary.totalProfitToday < 0 ? 'down' : ''} 
               style={{ fontSize: '18px', fontWeight: 700, fontFamily: 'var(--font-mono)' }}
             >
-              {summary.totalProfitToday > 0 ? '+' : summary.totalProfitToday < 0 ? '-' : ''}
-              ¥{Math.abs(summary.totalProfitToday).toFixed(2)}
+              <span style={{ marginRight: 1 }}>{summary.totalProfitToday > 0 ? '+' : summary.totalProfitToday < 0 ? '-' : ''}</span>
+              <span style={{ marginRight: 1 }}>¥</span>
+              <CountUp value={Math.abs(summary.totalProfitToday)} style={{ fontSize: metricSize }} />
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
@@ -1357,11 +1426,15 @@ function GroupSummary({ funds, holdings, groupName, getProfit }) {
               onClick={() => setShowPercent(!showPercent)}
               title="点击切换金额/百分比"
             >
-              {summary.totalHoldingReturn > 0 ? '+' : summary.totalHoldingReturn < 0 ? '-' : ''}
-              {showPercent 
-                ? `${Math.abs(summary.returnRate).toFixed(2)}%`
-                : `¥${Math.abs(summary.totalHoldingReturn).toFixed(2)}`
-              }
+              <span style={{ marginRight: 1 }}>{summary.totalHoldingReturn > 0 ? '+' : summary.totalHoldingReturn < 0 ? '-' : ''}</span>
+              {showPercent ? (
+                <CountUp value={Math.abs(summary.returnRate)} suffix="%" style={{ fontSize: metricSize }} />
+              ) : (
+                <>
+                  <span style={{ marginRight: 1 }}>¥</span>
+                  <CountUp value={Math.abs(summary.totalHoldingReturn)} style={{ fontSize: metricSize }} />
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -1423,7 +1496,67 @@ export default function HomePage() {
   const [clearConfirm, setClearConfirm] = useState(null); // { fund }
   const [holdings, setHoldings] = useState({}); // { [code]: { share: number, cost: number } }
   const [percentModes, setPercentModes] = useState({}); // { [code]: boolean }
+  const [isTradingDay, setIsTradingDay] = useState(true); // 默认为交易日，通过接口校正
   const tabsRef = useRef(null);
+
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+  // 检查交易日状态
+  const checkTradingDay = () => {
+    const now = new Date();
+    const isWeekend = now.getDay() === 0 || now.getDay() === 6;
+    
+    // 周末直接判定为非交易日
+    if (isWeekend) {
+      setIsTradingDay(false);
+      return;
+    }
+
+    // 工作日通过上证指数判断是否为节假日
+    // 接口返回示例: v_sh000001="1~上证指数~...~20260205150000~..."
+    // 第30位是时间字段
+    const script = document.createElement('script');
+    script.src = `https://qt.gtimg.cn/q=sh000001&_t=${Date.now()}`;
+    script.onload = () => {
+      const data = window.v_sh000001;
+      if (data) {
+        const parts = data.split('~');
+        if (parts.length > 30) {
+          const dateStr = parts[30].slice(0, 8); // 20260205
+          const currentStr = todayStr.replace(/-/g, '');
+          
+          if (dateStr === currentStr) {
+            setIsTradingDay(true); // 日期匹配，确认为交易日
+          } else {
+            // 日期不匹配 (显示的是旧数据)
+            // 如果已经过了 09:30 还是旧数据，说明今天休市
+            const minutes = now.getHours() * 60 + now.getMinutes();
+            if (minutes >= 9 * 60 + 30) {
+              setIsTradingDay(false);
+            } else {
+              // 9:30 之前，即使是旧数据，也默认是交易日（盘前）
+              setIsTradingDay(true);
+            }
+          }
+        }
+      }
+      document.body.removeChild(script);
+    };
+    script.onerror = () => {
+      document.body.removeChild(script);
+      // 接口失败，降级为仅判断周末
+      setIsTradingDay(!isWeekend);
+    };
+    document.body.appendChild(script);
+  };
+
+  useEffect(() => {
+    checkTradingDay();
+    // 每分钟检查一次
+    const timer = setInterval(checkTradingDay, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   // 过滤和排序后的基金列表
   const displayFunds = funds
@@ -1468,19 +1601,41 @@ export default function HomePage() {
   const getHoldingProfit = (fund, holding) => {
     if (!holding || typeof holding.share !== 'number') return null;
     
-    // 当前净值
-    const currentNav = fund.estPricedCoverage > 0.05 
-      ? fund.estGsz 
-      : (typeof fund.gsz === 'number' ? fund.gsz : Number(fund.dwjz));
-      
-    if (!currentNav) return null;
-
-    // 持仓金额 = 份额 * 当前净值
-    const amount = holding.share * currentNav;
+    const now = new Date();
+    const isAfter9 = now.getHours() >= 9;
+    const hasTodayData = fund.jzrq === todayStr;
     
-    // 估算收益 = 份额 * (当前净值 - 昨日净值)
-    // 注意：这里用估值涨跌幅计算当日盈亏
-    const profitToday = amount * (fund.estPricedCoverage > 0.05 ? fund.estGszzl : (Number(fund.gszzl) || 0)) / 100;
+    // 如果是交易日且9点以后，且今日净值未出，则强制使用估值（隐藏涨跌幅列模式）
+    const useValuation = isTradingDay && isAfter9 && !hasTodayData;
+
+    let currentNav;
+    let profitToday;
+
+    if (!useValuation) {
+      // 使用确权净值 (dwjz)
+      currentNav = Number(fund.dwjz);
+      if (!currentNav) return null;
+
+      const amount = holding.share * currentNav;
+      // 优先用 zzl (真实涨跌幅), 降级用 gszzl
+      const rate = fund.zzl !== undefined ? Number(fund.zzl) : (Number(fund.gszzl) || 0);
+      profitToday = amount - (amount / (1 + rate / 100));
+    } else {
+      // 否则使用估值
+      currentNav = fund.estPricedCoverage > 0.05 
+        ? fund.estGsz 
+        : (typeof fund.gsz === 'number' ? fund.gsz : Number(fund.dwjz));
+      
+      if (!currentNav) return null;
+
+      const amount = holding.share * currentNav;
+      // 估值涨跌幅
+      const gzChange = fund.estPricedCoverage > 0.05 ? fund.estGszzl : (Number(fund.gszzl) || 0);
+      profitToday = amount - (amount / (1 + gzChange / 100));
+    }
+      
+    // 持仓金额
+    const amount = holding.share * currentNav;
     
     // 总收益 = (当前净值 - 成本价) * 份额
     const profitTotal = typeof holding.cost === 'number' 
@@ -1822,67 +1977,106 @@ export default function HomePage() {
           dwjz: json.dwjz,
           gsz: json.gsz,
           gztime: json.gztime,
+          jzrq: json.jzrq,
           gszzl: Number.isFinite(gszzlNum) ? gszzlNum : json.gszzl
         };
 
-        // 获取重仓股票列表
-        const holdingsUrl = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${c}&topline=10&year=&month=&rt=${Date.now()}`;
-        loadScript(holdingsUrl).then(async () => {
-          let holdings = [];
-          const html = window.apidata?.content || '';
-          const rows = html.match(/<tr[\s\S]*?<\/tr>/gi) || [];
-          for (const r of rows) {
-            const cells = (r.match(/<td[\s\S]*?>([\s\S]*?)<\/td>/gi) || []).map(td => td.replace(/<[^>]*>/g, '').trim());
-            const codeIdx = cells.findIndex(txt => /^\d{6}$/.test(txt));
-            const weightIdx = cells.findIndex(txt => /\d+(?:\.\d+)?\s*%/.test(txt));
-            if (codeIdx >= 0 && weightIdx >= 0) {
-              holdings.push({
-                code: cells[codeIdx],
-                name: cells[codeIdx + 1] || '',
-                weight: cells[weightIdx],
-                change: null
+        // 并行获取：1. 腾讯接口获取最新确权净值和涨跌幅；2. 东方财富接口获取持仓
+        const tencentPromise = new Promise((resolveT) => {
+          const tUrl = `https://qt.gtimg.cn/q=jj${c}`;
+          const tScript = document.createElement('script');
+          tScript.src = tUrl;
+          tScript.onload = () => {
+            const v = window[`v_jj${c}`];
+            if (v) {
+              const p = v.split('~');
+              // p[5]: 单位净值, p[7]: 涨跌幅, p[8]: 净值日期
+              resolveT({ 
+                dwjz: p[5], 
+                zzl: parseFloat(p[7]), 
+                jzrq: p[8] ? p[8].slice(0, 10) : '' 
               });
+            } else {
+              resolveT(null);
             }
-          }
+            if (document.body.contains(tScript)) document.body.removeChild(tScript);
+          };
+          tScript.onerror = () => {
+            if (document.body.contains(tScript)) document.body.removeChild(tScript);
+            resolveT(null);
+          };
+          document.body.appendChild(tScript);
+        });
 
-          holdings = holdings.slice(0, 10);
+        const holdingsPromise = new Promise((resolveH) => {
+          const holdingsUrl = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${c}&topline=10&year=&month=&rt=${Date.now()}`;
+          loadScript(holdingsUrl).then(async () => {
+            let holdings = [];
+            const html = window.apidata?.content || '';
+            const rows = html.match(/<tr[\s\S]*?<\/tr>/gi) || [];
+            for (const r of rows) {
+              const cells = (r.match(/<td[\s\S]*?>([\s\S]*?)<\/td>/gi) || []).map(td => td.replace(/<[^>]*>/g, '').trim());
+              const codeIdx = cells.findIndex(txt => /^\d{6}$/.test(txt));
+              const weightIdx = cells.findIndex(txt => /\d+(?:\.\d+)?\s*%/.test(txt));
+              if (codeIdx >= 0 && weightIdx >= 0) {
+                holdings.push({
+                  code: cells[codeIdx],
+                  name: cells[codeIdx + 1] || '',
+                  weight: cells[weightIdx],
+                  change: null
+                });
+              }
+            }
 
-          if (holdings.length) {
-            try {
-              const tencentCodes = holdings.map(h => `s_${getTencentPrefix(h.code)}${h.code}`).join(',');
-              const quoteUrl = `https://qt.gtimg.cn/q=${tencentCodes}`;
+            holdings = holdings.slice(0, 10);
 
-              await new Promise((resQuote) => {
-                const scriptQuote = document.createElement('script');
-                scriptQuote.src = quoteUrl;
-                scriptQuote.onload = () => {
-                  holdings.forEach(h => {
-                    const varName = `v_s_${getTencentPrefix(h.code)}${h.code}`;
-                    const dataStr = window[varName];
-                    if (dataStr) {
-                      const parts = dataStr.split('~');
-                      // parts[5] 是涨跌幅
-                      if (parts.length > 5) {
-                        h.change = parseFloat(parts[5]);
+            if (holdings.length) {
+              try {
+                const tencentCodes = holdings.map(h => `s_${getTencentPrefix(h.code)}${h.code}`).join(',');
+                const quoteUrl = `https://qt.gtimg.cn/q=${tencentCodes}`;
+
+                await new Promise((resQuote) => {
+                  const scriptQuote = document.createElement('script');
+                  scriptQuote.src = quoteUrl;
+                  scriptQuote.onload = () => {
+                    holdings.forEach(h => {
+                      const varName = `v_s_${getTencentPrefix(h.code)}${h.code}`;
+                      const dataStr = window[varName];
+                      if (dataStr) {
+                        const parts = dataStr.split('~');
+                        if (parts.length > 5) {
+                          h.change = parseFloat(parts[5]);
+                        }
                       }
-                    }
-                  });
-                  if (document.body.contains(scriptQuote)) document.body.removeChild(scriptQuote);
-                  resQuote();
-                };
-                scriptQuote.onerror = () => {
-                  if (document.body.contains(scriptQuote)) document.body.removeChild(scriptQuote);
-                  resQuote();
-                };
-                document.body.appendChild(scriptQuote);
-              });
-            } catch (e) {
-              console.error('获取股票涨跌幅失败', e);
+                    });
+                    if (document.body.contains(scriptQuote)) document.body.removeChild(scriptQuote);
+                    resQuote();
+                  };
+                  scriptQuote.onerror = () => {
+                    if (document.body.contains(scriptQuote)) document.body.removeChild(scriptQuote);
+                    resQuote();
+                  };
+                  document.body.appendChild(scriptQuote);
+                });
+              } catch (e) {
+                console.error('获取股票涨跌幅失败', e);
+              }
+            }
+            resolveH(holdings);
+          }).catch(() => resolveH([]));
+        });
+
+        Promise.all([tencentPromise, holdingsPromise]).then(([tData, holdings]) => {
+          if (tData) {
+            // 如果腾讯数据的日期更新（或相同），优先使用腾讯的净值数据（通常更准且包含涨跌幅）
+            if (tData.jzrq && (!gzData.jzrq || tData.jzrq >= gzData.jzrq)) {
+              gzData.dwjz = tData.dwjz;
+              gzData.jzrq = tData.jzrq;
+              gzData.zzl = tData.zzl; // 真实涨跌幅
             }
           }
-
           resolve({ ...gzData, holdings });
-        }).catch(() => resolve({ ...gzData, holdings: [] }));
+        });
       };
 
       scriptGz.onerror = () => {
@@ -2754,7 +2948,27 @@ export default function HomePage() {
                                 </button>
                               )}
                               <div className="title-text">
-                                <span>{f.name}</span>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  {f.name}
+                                  {f.jzrq === todayStr && (
+                                    <span 
+                                      title="今日净值已更新" 
+                                      style={{ 
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        width: 16, 
+                                        height: 16, 
+                                        borderRadius: '50%', 
+                                        background: 'rgba(34, 197, 94, 0.2)', 
+                                        color: '#22c55e',
+                                        fontSize: '10px'
+                                      }}
+                                    >
+                                      ✓
+                                    </span>
+                                  )}
+                                </span>
                                 <span className="muted">#{f.code}</span>
                               </div>
                             </div>
@@ -2779,6 +2993,22 @@ export default function HomePage() {
 
                           <div className="row" style={{ marginBottom: 12 }}>
                             <Stat label="单位净值" value={f.dwjz ?? '—'} />
+                            {(() => {
+                              const now = new Date();
+                              const isAfter9 = now.getHours() >= 9;
+                              const hasTodayData = f.jzrq === todayStr;
+                              const shouldHideChange = isTradingDay && isAfter9 && !hasTodayData;
+                              
+                              if (shouldHideChange) return null;
+                              
+                              return (
+                                <Stat 
+                                  label="涨跌幅" 
+                                  value={f.zzl !== undefined ? `${f.zzl > 0 ? '+' : ''}${Number(f.zzl).toFixed(2)}%` : '--'} 
+                                  delta={f.zzl} 
+                                />
+                              );
+                            })()}
                             <Stat label="估值净值" value={f.estPricedCoverage > 0.05 ? f.estGsz.toFixed(4) : (f.gsz ?? '—')} />
                             <Stat
                               label="估值涨跌幅"
@@ -2794,7 +3024,7 @@ export default function HomePage() {
                               
                               if (!profit) {
                                 return (
-                                  <div className="stat">
+                                  <div className="stat" style={{ flexDirection: 'column', gap: 4 }}>
                                     <span className="label">持仓金额</span>
                                     <div 
                                       className="value muted" 
@@ -2811,7 +3041,7 @@ export default function HomePage() {
                                 <>
                                   <div 
                                     className="stat" 
-                                    style={{ cursor: 'pointer' }}
+                                    style={{ cursor: 'pointer', flexDirection: 'column', gap: 4 }}
                                     onClick={() => setActionModal({ open: true, fund: f })}
                                   >
                                     <span className="label" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -2819,7 +3049,7 @@ export default function HomePage() {
                                     </span>
                                     <span className="value">¥{profit.amount.toFixed(2)}</span>
                                   </div>
-                                  <div className="stat">
+                                  <div className="stat" style={{ flexDirection: 'column', gap: 4 }}>
                                     <span className="label">当日盈亏</span>
                                     <span className={`value ${profit.profitToday > 0 ? 'up' : profit.profitToday < 0 ? 'down' : ''}`}>
                                       {profit.profitToday > 0 ? '+' : profit.profitToday < 0 ? '-' : ''}¥{Math.abs(profit.profitToday).toFixed(2)}
@@ -2832,7 +3062,7 @@ export default function HomePage() {
                                         e.stopPropagation();
                                         setPercentModes(prev => ({ ...prev, [f.code]: !prev[f.code] }));
                                       }}
-                                      style={{ cursor: 'pointer' }}
+                                      style={{ cursor: 'pointer', flexDirection: 'column', gap: 4 }}
                                       title="点击切换金额/百分比"
                                     >
                                       <span className="label">持有收益{percentModes[f.code] ? '(%)' : ''}</span>
