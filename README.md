@@ -1,7 +1,7 @@
 # 实时基金估值 (Real-time Fund Valuation)
 
 一个基于 Next.js 开发的纯前端基金估值与重仓股实时追踪工具。采用玻璃拟态设计（Glassmorphism），支持移动端适配，且无需后端服务器即可运行。
-预览地址：[https://hzm0321.github.io/real-time-fund/](https://hzm0321.github.io/real-time-fund/)
+预览地址：[https://ningzhengsheng/real-time-fund/](https://ningzhengsheng.cn/real-time-fund/)
 
 ## ✨ 特性
 
@@ -15,7 +15,7 @@
 
 ## 🛠 技术栈
 
-- **框架**：[Next.js](https://nextjs.org/) (App Router)
+- **框架**：[Next.js官网](https://nextjs.org/) [Next.js入门指南：从零构建现代Web应用](https://ningzhengsheng.cn/2026/02/10/Nextjs%E7%BD%91%E9%A1%B5%E5%BC%80%E5%8F%91%E5%85%A5%E9%97%A8%E6%8C%87%E5%8D%97/)
 - **样式**：原生 CSS (Global CSS) + 玻璃拟态设计
 - **数据源**：
   - 基金估值：天天基金 (JSONP)
@@ -29,7 +29,7 @@
 
 1. 克隆仓库：
    ```bash
-   git clone https://github.com/hzm0321/real-time-fund.git
+   git clone https://github.com/zhengshengning/real-time-fund.git
    cd real-time-fund
    ```
 
@@ -104,11 +104,6 @@ docker compose up -d
 3. **调整频率**：点击右上角“设置”图标，可调整自动刷新的间隔时间。
 4. **删除基金**：点击卡片右上角的红色删除图标即可移除。
 
-## 💬 开发者交流群
-
-欢迎基金实时开发者加入微信群聊讨论开发与协作：
-
-<img src="./doc/webchatGroup.jpg" width="300">
 
 ## 📝 免责声明
 
@@ -125,4 +120,6 @@ docker compose up -d
 完整协议文本见仓库根目录 [LICENSE](./LICENSE) 文件，或 [GNU AGPL v3 官方说明](https://www.gnu.org/licenses/agpl-3.0.html)。
 
 ---
-Made by [hzm](https://github.com/hzm0321)
+## 💬 联系
+Github主页：[https://github.com/zhengshengning](https://github.com/zhengshengning)
+个人博客：[https://ningzhengsheng.cn](https://ningzhengsheng.cn)

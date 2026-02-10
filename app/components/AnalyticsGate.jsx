@@ -7,7 +7,7 @@ export default function AnalyticsGate({ GA_ID }) {
   useEffect(() => {
     try {
       const href = window.location.href || '';
-      setEnabled(href.includes('hzm0321'));
+      setEnabled(href.includes('zhengshengning'));
     } catch {}
   }, []);
 
