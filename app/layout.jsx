@@ -14,6 +14,23 @@ export default function RootLayout({ children }) {
     <html lang="zh-CN">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                const saved = localStorage.getItem('theme');
+                if (saved) {
+                  document.documentElement.setAttribute('data-theme', saved);
+                } else {
+                  // Default to dark, but if you want system preference:
+                  // if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+                  //   document.documentElement.setAttribute('data-theme', 'light');
+                  // }
+                }
+              } catch (e) {}
+            `,
+          }}
+        />
       </head>
       <body>
         <AnalyticsGate GA_ID={GA_ID} />

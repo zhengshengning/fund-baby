@@ -8,6 +8,25 @@
   --success: #34d399;
   --danger: #f87171;
   --border: #1f2937;
+  --surface: #0b1220;
+}
+
+[data-theme='light'] {
+  --bg: #f8fafc;
+  --card: #ffffff;
+  --text: #0f172a;
+  --muted: #64748b;
+  --primary: #0284c7;
+  --accent: #3b82f6;
+  --success: #10b981;
+  --danger: #ef4444;
+  --border: #cbd5e1;
+  --surface: #f1f5f9;
+}
+
+[data-theme='light'] .glass {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.6));
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 * {
@@ -146,7 +165,7 @@ body {
   padding: 0 14px;
   border-radius: 12px;
   border: 1px solid var(--border);
-  background: #0b1220;
+  background: var(--surface);
   color: var(--text);
   outline: none;
   font-size: 14px;
@@ -208,7 +227,7 @@ input[type="number"] {
   padding: 6px 10px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: #0b1220;
+  background: var(--surface);
   font-size: 12px;
 }
 
@@ -220,7 +239,7 @@ input[type="number"] {
   padding: 4px 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: #0b1220;
+  background: var(--surface);
   font-size: 12px;
 }
 
@@ -339,7 +358,7 @@ input[type="number"] {
   padding: 8px 10px;
   border-radius: 10px;
   border: 1px solid var(--border);
-  background: #0b1220;
+  background: var(--surface);
 }
 
 .item .name {
@@ -404,7 +423,7 @@ input[type="number"] {
   justify-content: center;
   border-radius: 10px;
   border: 1px solid var(--border);
-  background: #0b1220;
+  background: var(--surface);
   color: var(--muted);
   cursor: pointer;
   transition: box-shadow 200ms ease, border-color 200ms ease, transform 150ms ease, color 200ms ease;
@@ -790,7 +809,7 @@ input[type="number"] {
   padding: 0 12px;
   border-radius: 999px;
   border: 1px solid var(--border);
-  background: #0b1220;
+  background: var(--surface);
   color: var(--text);
   cursor: pointer;
   transition: border-color 200ms ease, transform 150ms ease;
