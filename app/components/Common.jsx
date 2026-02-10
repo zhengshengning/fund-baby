@@ -5,8 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
-import zhifubaoImg from "../assets/zhifubao.jpg";
-import weixinImg from "../assets/weixin.jpg";
+import zhifubaoImg from "../assets/zhifubao.jpeg";
+import weixinImg from "../assets/weixin.jpeg";
 import { CalendarIcon, MinusIcon, PlusIcon } from './Icons';
 
 dayjs.extend(utc);

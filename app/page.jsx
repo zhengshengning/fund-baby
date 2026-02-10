@@ -11,7 +11,7 @@ import Announcement from "./components/Announcement";
 import { DatePicker, DonateTabs, NumericInput, Stat } from "./components/Common";
 import { ChevronIcon, CloseIcon, CloudIcon, DragIcon, ExitIcon, EyeIcon, EyeOffIcon, GridIcon, ListIcon, LoginIcon, LogoutIcon, MailIcon, MoonIcon, PinIcon, PinOffIcon, PlusIcon, RefreshIcon, SettingsIcon, SortIcon, StarIcon, SunIcon, TrashIcon, UpdateIcon, UserIcon } from "./components/Icons";
 import githubImg from "./assets/github.svg";
-import weChatGroupImg from "./assets/weChatGroup.png";
+import wxChatImg from "./assets/wxChat.jpeg";
 import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { fetchFundData, fetchLatestRelease, fetchShanghaiIndexDate, fetchSmartFundNetValue, searchFunds, submitFeedback } from './api/fund';
 import packageJson from '../package.json';
@@ -197,7 +197,7 @@ function WeChatModal({ onClose }) {
             </button>
         </div>
         <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <img src={weChatGroupImg.src} alt="WeChat Group" style={{ maxWidth: '100%', borderRadius: '8px' }} />
+            <img src={wxChatImg.src} alt="WeChat Group" style={{ maxWidth: '100%', borderRadius: '8px' }} />
         </div>
         <p className="muted" style={{ textAlign: 'center', marginTop: 16, fontSize: '14px' }}>
             扫码加入群聊，获取最新更新与交流
