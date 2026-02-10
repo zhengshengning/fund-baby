@@ -3897,6 +3897,10 @@ export default function HomePage() {
         </div>
       </div>
 
+      <div style={{ textAlign: 'center', color: '#ff4d4f', fontSize: '13px', marginBottom: '16px', fontWeight: 500 }}>
+        提示：不登陆个人数据保存在个人浏览器中，登陆后数据将保存在线上数据库
+      </div>
+
       <div className="grid">
         <div className="col-12 glass card add-fund-section" role="region" aria-label="添加基金">
           <div className="title" style={{ marginBottom: 12 }}>
