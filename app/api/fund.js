@@ -388,7 +388,7 @@ export const fetchShanghaiIndexDate = async () => {
 };
 
 export const fetchLatestRelease = async () => {
-  const res = await fetch('https://api.github.com/repos/zhengshengning/real-time-fund/releases/latest');
+  const res = await fetch('https://api.github.com/repos/zhengshengning/fund-baby/releases/latest');
   if (!res.ok) return null;
   const data = await res.json();
   return {

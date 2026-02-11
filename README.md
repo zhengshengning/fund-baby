@@ -1,6 +1,6 @@
 # 实时基金估值 (Real-time Fund Valuation)
 
-**在线预览地址：[https://ningzhengsheng/real-time-fund/](https://ningzhengsheng.cn/real-time-fund/)**
+**在线预览地址：[https://ningzhengsheng/fund-baby/](https://ningzhengsheng.cn/fund-baby/)**
 > 由于某些平台不能在实时看见基金的估值，所以做了一个基金估值的网站。
 
 > 一个基于 Next.js 开发的纯前端基金估值与重仓股实时追踪工具。采用玻璃拟态设计（Glassmorphism），支持移动端适配，且无需后端服务器即可运行。
@@ -42,8 +42,8 @@
 
 1. 克隆仓库：
    ```bash
-   git clone https://github.com/zhengshengning/real-time-fund.git
-   cd real-time-fund
+   git clone https://github.com/zhengshengning/fund-baby.git
+   cd fund-baby
    ```
 
 2. 安装依赖：
@@ -114,12 +114,12 @@ npm run build
 
 1. 构建镜像
 ```
-docker build -t real-time-fund .
+docker build -t fund-baby .
 ```
 
 2. 启动容器
 ```
-docker run -d -p 3000:3000 --name fund real-time-fund
+docker run -d -p 3000:3000 --name fund fund-baby
 ```
 
 #### docker-compose

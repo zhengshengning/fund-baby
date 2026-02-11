@@ -3,7 +3,7 @@ import AnalyticsGate from './components/AnalyticsGate';
 import packageJson from '../package.json';
 
 export const metadata = {
-  title: `养鸡小宝 V${packageJson.version}`,
+  title: `养基小宝 V${packageJson.version}`,
   description: '输入基金编号添加基金，实时显示估值与前10重仓'
 };
 

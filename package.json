@@ -1,6 +1,6 @@
 {
-  "name": "real-time-fund",
-  "version": "0.1.5",
+  "name": "fund-baby",
+  "version": "1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
