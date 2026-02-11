@@ -288,26 +288,38 @@ input[type="number"] {
   }
 
   .card {
-    padding: 12px;
+    padding: 12px 16px; /* 调整 padding 与表格视图一致 */
   }
 
   .stat {
     flex-direction: column;
-    gap: 4px;
+    gap: 2px; /* 减小 label 和 value 的间距 */
     min-width: 0;
   }
 
   .stat .label {
-    font-size: 11px;
+    font-size: 10px; /* 辅助信息 10px */
+    color: var(--muted);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .stat .value {
-    font-size: 15px;
+    font-size: 14px; /* 核心数值 14px */
+    font-weight: 600;
     line-height: 1.2;
     white-space: nowrap;
+  }
+  
+  /* 针对卡片视图的特定调整，使其更像表格行的布局 */
+  .card .row {
+    margin-bottom: 8px !important; /* 减小行间距 */
+    gap: 8px; /* 减小列间距 */
+  }
+  
+  .card .title {
+    margin-bottom: 8px !important; /* 减小标题与内容的间距 */
   }
 
   .stat .badge {
@@ -615,6 +627,19 @@ input[type="number"] {
   font-size: 10px;
   margin-left: 6px;
   flex-shrink: 0; /* 关键：防止被挤压 */
+}
+
+/* 修复卡片视图头部布局，防止名称挤压 */
+.card .title {
+  min-width: 0;
+}
+.card .title .title-text {
+  flex: 1;
+  min-width: 0;
+}
+.card .actions {
+  flex-shrink: 0;
+  margin-left: 8px;
 }
 
 .name-row {
@@ -1522,5 +1547,89 @@ input[type="number"] {
   .login-modal {
     max-width: 100% !important;
     margin: 16px;
+  }
+}
+
+/* =========================================
+   移动端卡片视图 (Card View) 适配
+   ========================================= */
+
+/* 1. 修复头部挤压问题 */
+.card .title {
+  min-width: 0;
+  /* 确保 flex item 能够收缩 */
+}
+
+.card .title .title-text {
+  flex: 1;
+  /* 占据剩余空间 */
+  min-width: 0;
+  /* 允许内部内容收缩触发 ellipsis */
+}
+
+.card .title .name-row {
+  max-width: 100%;
+}
+
+.card .actions {
+  flex-shrink: 0;
+  /* 防止右侧操作区被挤压 */
+  margin-left: 8px;
+}
+
+/* 2. 移动端样式紧凑化 (复刻表格视图的风格) */
+@media (max-width: 640px) {
+  .card {
+    padding: 12px 16px !important;
+  }
+
+  /* 减小 Stat 组件的间距和字体 */
+  .stat {
+    gap: 2px !important;
+  }
+
+  .stat .label {
+    font-size: 10px !important;
+    /* 辅助信息 */
+    color: var(--muted);
+  }
+
+  .stat .value {
+    font-size: 14px !important;
+    /* 核心数值 */
+    font-weight: 600;
+  }
+
+  /* 减小行间距 */
+  .card .row {
+    margin-bottom: 8px !important;
+    gap: 8px !important;
+  }
+
+  .card .title {
+    margin-bottom: 8px !important;
+  }
+
+  /* Badge 样式微调 */
+  .badge-v {
+    padding: 2px 6px !important;
+    border-radius: 6px;
+  }
+  
+  .badge-v span {
+    font-size: 10px !important;
+  }
+  
+  .badge-v strong {
+    font-size: 10px !important; /* 估值时间也改小 */
+  }
+  
+  /* 调整卡片视图的标题字体，与表格视图一致 */
+  .card .name-text {
+    font-size: 15px !important;
+    font-weight: 600;
+  }
+  .card .muted {
+    font-size: 10px !important; /* 代码 #123456 */
   }
 }

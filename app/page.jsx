@@ -4489,7 +4489,8 @@ export default function HomePage() {
                             ) : (
                               <>
                                 <div className="row" style={{ marginBottom: 10 }}>
-                                  <div className="title">
+                                  <div className="title" style={{ width: '100%' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
                                     {currentTab !== 'all' && currentTab !== 'fav' ? (
                                       <button
                                         className="icon-button fav-button"
@@ -4523,6 +4524,7 @@ export default function HomePage() {
                                         )}
                                       </div>
                                       <span className="muted">#{f.code}</span>
+                                    </div>
                                     </div>
                                   </div>
 
@@ -4657,7 +4659,7 @@ export default function HomePage() {
                                 >
                                   <div className="row" style={{ width: '100%', flex: 1 }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                      <span>前10重仓股票</span>
+                                      <span style={{ fontSize: '12px', color: 'var(--accent)', fontWeight: 500 }}>前10重仓股票</span>
                                       <ChevronIcon
                                         width="16"
                                         height="16"
