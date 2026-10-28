@@ -72,102 +72,331 @@ export const fetchSmartFundNetValue = async (code, startDate) => {
   return null;
 };
 
+// ---------------------------------------------------------------------------
+// 数据源说明（2026 年上游变更）
+//
+// 天天基金应监管要求已下线“基金实时估值”，fundgz.1234567.com.cn 现在对任意代码
+// 都返回 HTML 404 页（HTTP 状态却是 200），JSONP 回调永不触发，脚本解析失败会走
+// onerror。同时 fundf10 的持仓 / 历史净值接口在本地域名（Referer 为 localhost）下
+// 也返回 404，只在 Referer 为 eastmoney 域名时才正常。
+//
+// 因此这里改用三个目前仍然可用的数据源：
+//   1. qt.gtimg.cn                      单位净值、净值日期、日涨跌幅
+//   2. fundmobapi.eastmoney.com         前十大重仓股（返回 JSON，带 CORS 头）
+//   3. fund.eastmoney.com/pingzhongdata 历史净值走势（脚本注入全局变量）
+// ---------------------------------------------------------------------------
+
+const HOLDINGS_TTL = 6 * 60 * 60 * 1000; // 重仓股按季报披露，缓存 6 小时
+const TREND_TTL = 10 * 60 * 1000;        // 净值走势按日更新，缓存 10 分钟
+const dataCache = new Map();
+
+// 估值接口探测失败后，本次会话内直接走降级，避免 30 秒轮询每次都产生失败请求。
+// 保留一个重试窗口，万一上游恢复也能自动切回去。
+const VALUATION_RETRY_MS = 30 * 60 * 1000;
+const VALUATION_DOWN_KEY = 'fundgzDownUntil';
+let valuationDownUntil = 0;
+
+const isValuationDown = () => {
+  if (valuationDownUntil > Date.now()) return true;
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      const saved = Number(window.sessionStorage.getItem(VALUATION_DOWN_KEY) || 0);
+      if (saved > Date.now()) {
+        valuationDownUntil = saved;
+        return true;
+      }
+    }
+  } catch (e) {
+  }
+  return false;
+};
+
+const markValuationDown = () => {
+  valuationDownUntil = Date.now() + VALUATION_RETRY_MS;
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      window.sessionStorage.setItem(VALUATION_DOWN_KEY, String(valuationDownUntil));
+    }
+  } catch (e) {
+  }
+};
+
+const readCache = (key, ttl) => {
+  const hit = dataCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > ttl) {
+    dataCache.delete(key);
+    return null;
+  }
+  return hit.value;
+};
+
+const writeCache = (key, value) => {
+  dataCache.set(key, { at: Date.now(), value });
+  return value;
+};
+
+// 把 6 位 A 股 / 5 位港股代码转成腾讯行情符号，例如 000858 -> s_sz000858
+const toTencentStockSymbol = (code) => {
+  const cd = String(code || '');
+  if (/^\d{6}$/.test(cd)) {
+    const pfx = cd.startsWith('6') || cd.startsWith('9')
+      ? 'sh'
+      : ((cd.startsWith('4') || cd.startsWith('8')) ? 'bj' : 'sz');
+    return `s_${pfx}${cd}`;
+  }
+  if (/^\d{5}$/.test(cd)) return `s_hk${cd}`;
+  return null;
+};
+
+// 基金名称：搜索接口对部分基金返回空，失败时交给腾讯行情里的名称兜底
+const fetchFundName = async (c) => {
+  const cached = readCache(`name:${c}`, HOLDINGS_TTL);
+  if (cached) return cached;
+  const cb = `SuggestData_fallback_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const url = `https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx?m=1&key=${encodeURIComponent(c)}&callback=${cb}&_=${Date.now()}`;
+  let name = '';
+  try {
+    await new Promise((res) => {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        delete window[cb];
+        res();
+      };
+      window[cb] = (data) => {
+        if (data && Array.isArray(data.Datas)) {
+          const found = data.Datas.find((d) => d.CODE === c);
+          if (found) name = found.NAME || found.SHORTNAME || '';
+        }
+        finish();
+      };
+      const script = document.createElement('script');
+      script.src = url;
+      script.async = true;
+      script.onload = () => {
+        if (document.body.contains(script)) document.body.removeChild(script);
+      };
+      script.onerror = () => {
+        if (document.body.contains(script)) document.body.removeChild(script);
+        finish();
+      };
+      document.body.appendChild(script);
+      setTimeout(finish, 3000);
+    });
+  } catch (e) {
+  }
+  return name ? writeCache(`name:${c}`, name) : '';
+};
+
+// 前十大重仓股
+// 优先走本地代理 /api/holdings（上游拒绝浏览器跨域，服务端代为请求）；
+// 代理不可用时（例如纯静态部署）再尝试直连，都失败则返回空数组。
+export const fetchHoldingsByMobileApi = async (c) => {
+  let base = readCache(`holdings:${c}`, HOLDINGS_TTL);
+  if (!base) {
+    const list = await requestHoldings(c);
+    if (!Array.isArray(list) || !list.length) throw new Error('持仓数据为空');
+    // 只缓存低频变化的代码/名称/占比，当日涨跌每次实时取
+    base = writeCache(`holdings:${c}`, list.slice(0, 10).map((it) => ({
+      code: String(it.code || ''),
+      name: it.name || '',
+      weight: it.weight || '',
+    })));
+  }
+
+  const holdings = base.map((h) => ({ ...h, change: null }));
+
+  // 用腾讯行情补齐重仓股当日涨跌幅
+  const symbols = holdings.map((h) => toTencentStockSymbol(h.code)).filter(Boolean);
+  if (symbols.length) {
+    try {
+      await loadScript(`https://qt.gtimg.cn/q=${symbols.join(',')}&_t=${Date.now()}`);
+      holdings.forEach((h) => {
+        const sym = toTencentStockSymbol(h.code);
+        if (!sym) return;
+        const raw = window[`v_${sym}`];
+        if (typeof raw !== 'string') return;
+        const parts = raw.split('~');
+        if (parts.length > 5) {
+          const chg = parseFloat(parts[5]);
+          if (Number.isFinite(chg)) h.change = chg;
+        }
+      });
+    } catch (e) {
+    }
+  }
+  return holdings;
+};
+
+// 先本地代理，再直连上游，任一成功即返回
+const requestHoldings = async (c) => {
+  try {
+    const res = await fetch(`/api/holdings?code=${encodeURIComponent(c)}`, { cache: 'no-store' });
+    if (res.ok) {
+      const json = await res.json();
+      if (Array.isArray(json?.holdings) && json.holdings.length) return json.holdings;
+    }
+  } catch (e) {
+  }
+
+  const url = `https://fundmobapi.eastmoney.com/FundMNewApi/FundMNInverstPosition?FCODE=${c}&deviceid=Wap&plat=Wap&product=EFund&version=2.0.0&_=${Date.now()}`;
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) throw new Error('持仓接口返回异常');
+  const json = await res.json();
+  const list = json?.Datas?.fundStocks;
+  if (!Array.isArray(list) || !list.length) throw new Error('持仓数据为空');
+  return list.map((it) => ({
+    code: String(it.GPDM || ''),
+    name: it.GPJC || '',
+    weight: it.JZBL ? `${it.JZBL}%` : '',
+  }));
+};
+
+// pingzhongdata 脚本会把结果挂到同一个全局变量上，并发加载不同基金时会互相覆盖，
+// 因此用串行队列保证同一时刻只有一个走势请求在跑。
+let trendQueue = Promise.resolve();
+const runTrendExclusive = (task) => {
+  const next = trendQueue.then(task, task);
+  trendQueue = next.then(() => { }, () => { });
+  return next;
+};
+
+// 历史净值走势（最近 90 个交易日）
+export const fetchHistoryTrend = async (c) => {
+  const cached = readCache(`trend:${c}`, TREND_TTL);
+  if (cached) return cached;
+  return runTrendExclusive(async () => {
+    // 排队期间可能已被同基金的另一次调用填充
+    const hit = readCache(`trend:${c}`, TREND_TTL);
+    if (hit) return hit;
+
+    const empty = { historyTrend: [], yesterdayChange: null };
+    try {
+      await loadScript(`https://fund.eastmoney.com/pingzhongdata/${c}.js?v=${Date.now()}`);
+    } catch (e) {
+      return empty;
+    }
+
+    const trend = Array.isArray(window.Data_netWorthTrend) ? window.Data_netWorthTrend : [];
+    if (!trend.length) return empty;
+
+    const sliced = trend.slice(-90);
+    const historyTrend = sliced.map((item) => ({
+      x: item.x,
+      y: item.y,
+      equityReturn: item.equityReturn,
+    }));
+    const prev = sliced[sliced.length - 2];
+    const yesterdayChange = prev && typeof prev.equityReturn === 'number' ? prev.equityReturn : null;
+
+    return writeCache(`trend:${c}`, { historyTrend, yesterdayChange });
+  });
+};
+
+/**
+ * 估值接口不可用时的降级实现：用已结算净值代替盘中估值。
+ * 返回结果带 noValuation: true，页面会展示“净值日期”而不是“估值时间”。
+ */
 export const fetchFundDataFallback = async (c) => {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     throw new Error('无浏览器环境');
   }
-  return new Promise(async (resolve, reject) => {
-    const searchCallbackName = `SuggestData_fallback_${Date.now()}`;
-    const searchUrl = `https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx?m=1&key=${encodeURIComponent(c)}&callback=${searchCallbackName}&_=${Date.now()}`;
-    let fundName = '';
-    try {
-      await new Promise((resSearch, rejSearch) => {
-        window[searchCallbackName] = (data) => {
-          if (data && data.Datas && data.Datas.length > 0) {
-            const found = data.Datas.find(d => d.CODE === c);
-            if (found) {
-              fundName = found.NAME || found.SHORTNAME || '';
-            }
-          }
-          delete window[searchCallbackName];
-          resSearch();
-        };
-        const script = document.createElement('script');
-        script.src = searchUrl;
-        script.async = true;
-        script.onload = () => {
-          if (document.body.contains(script)) document.body.removeChild(script);
-        };
-        script.onerror = () => {
-          if (document.body.contains(script)) document.body.removeChild(script);
-          delete window[searchCallbackName];
-          rejSearch(new Error('搜索接口失败'));
-        };
-        document.body.appendChild(script);
-        setTimeout(() => {
-          if (window[searchCallbackName]) {
-            delete window[searchCallbackName];
-            resSearch();
-          }
-        }, 3000);
-      });
-    } catch (e) {
-    }
-    const tUrl = `https://qt.gtimg.cn/q=jj${c}`;
-    const tScript = document.createElement('script');
-    tScript.src = tUrl;
-    tScript.onload = () => {
-      const v = window[`v_jj${c}`];
-      if (v && v.length > 5) {
-        const p = v.split('~');
-        const name = fundName || p[1] || `未知基金(${c})`;
-        const dwjz = p[5];
+
+  const fundName = await fetchFundName(c).catch(() => '');
+
+  // 腾讯基金行情：提供单位净值、净值日期、日涨跌幅
+  let quote = null;
+  try {
+    await loadScript(`https://qt.gtimg.cn/q=jj${c}&_t=${Date.now()}`);
+    const raw = window[`v_jj${c}`];
+    if (typeof raw === 'string' && raw.length > 5) {
+      const p = raw.split('~');
+      const dwjz = p[5];
+      if (dwjz && dwjz !== '0.0000') {
         const zzl = parseFloat(p[7]);
-        const jzrq = p[8] ? p[8].slice(0, 10) : '';
-        if (dwjz) {
-          resolve({
-            code: c,
-            name: name,
-            dwjz: dwjz,
-            gsz: null,
-            gztime: null,
-            jzrq: jzrq,
-            gszzl: null,
-            zzl: !isNaN(zzl) ? zzl : null,
-            noValuation: true,
-            holdings: []
-          });
-        } else {
-          reject(new Error('未能获取到基金数据'));
-        }
-      } else {
-        reject(new Error('未能获取到基金数据'));
+        quote = {
+          name: fundName || p[1] || `未知基金(${c})`,
+          dwjz,
+          zzl: Number.isFinite(zzl) ? zzl : null,
+          jzrq: p[8] ? p[8].slice(0, 10) : '',
+        };
       }
-      if (document.body.contains(tScript)) document.body.removeChild(tScript);
-    };
-    tScript.onerror = () => {
-      if (document.body.contains(tScript)) document.body.removeChild(tScript);
-      reject(new Error('基金数据加载失败'));
-    };
-    document.body.appendChild(tScript);
-  });
+    }
+  } catch (e) {
+    quote = null;
+  }
+
+  if (!quote) {
+    throw new Error('未能获取到基金数据');
+  }
+
+  const [holdings, trendData] = await Promise.all([
+    fetchHoldingsByMobileApi(c).catch(() => []),
+    fetchHistoryTrend(c).catch(() => ({ historyTrend: [], yesterdayChange: null })),
+  ]);
+
+  return {
+    code: c,
+    name: quote.name,
+    dwjz: quote.dwjz,
+    gsz: null,
+    gztime: null,
+    jzrq: quote.jzrq,
+    gszzl: null,
+    zzl: quote.zzl,
+    noValuation: true,
+    holdings,
+    historyTrend: trendData.historyTrend,
+    yesterdayChange: trendData.yesterdayChange,
+  };
 };
 
 export const fetchFundData = async (c) => {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     throw new Error('无浏览器环境');
   }
-  return new Promise(async (resolve, reject) => {
+
+  // 已确认估值源不可用，直接降级，不再发起必然失败的请求
+  if (isValuationDown()) {
+    return fetchFundDataFallback(c);
+  }
+
+  return new Promise((resolve, reject) => {
     const gzUrl = `https://fundgz.1234567.com.cn/js/${c}.js?rt=${Date.now()}`;
     const scriptGz = document.createElement('script');
     scriptGz.src = gzUrl;
     const originalJsonpgz = window.jsonpgz;
+    let settled = false;
+    let timer = null;
+
+    const cleanup = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (window.jsonpgz !== originalJsonpgz) window.jsonpgz = originalJsonpgz;
+      if (document.body.contains(scriptGz)) document.body.removeChild(scriptGz);
+    };
+
+    // 估值接口已下线：统一降级到腾讯净值 + 移动端持仓 + 历史走势
+    const useFallback = () => {
+      if (settled) return;
+      settled = true;
+      markValuationDown();
+      cleanup();
+      fetchFundDataFallback(c).then(resolve).catch(reject);
+    };
+
     window.jsonpgz = (json) => {
-      window.jsonpgz = originalJsonpgz;
+      if (settled) return;
       if (!json || typeof json !== 'object') {
-        fetchFundDataFallback(c).then(resolve).catch(reject);
+        useFallback();
         return;
       }
+      settled = true;
+      cleanup();
       const gszzlNum = Number(json.gszzl);
       const gzData = {
         code: json.fundcode,
@@ -202,143 +431,9 @@ export const fetchFundData = async (c) => {
         };
         document.body.appendChild(tScript);
       });
-      const holdingsPromise = new Promise((resolveH) => {
-        const holdingsUrl = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${c}&topline=10&year=&month=&_=${Date.now()}`;
-        loadScript(holdingsUrl).then(async () => {
-          let holdings = [];
-          const html = window.apidata?.content || '';
-          const headerRow = (html.match(/<thead[\s\S]*?<tr[\s\S]*?<\/tr>[\s\S]*?<\/thead>/i) || [])[0] || '';
-          const headerCells = (headerRow.match(/<th[\s\S]*?>([\s\S]*?)<\/th>/gi) || []).map(th => th.replace(/<[^>]*>/g, '').trim());
-          let idxCode = -1, idxName = -1, idxWeight = -1;
-          headerCells.forEach((h, i) => {
-            const t = h.replace(/\s+/g, '');
-            if (idxCode < 0 && (t.includes('股票代码') || t.includes('证券代码'))) idxCode = i;
-            if (idxName < 0 && (t.includes('股票名称') || t.includes('证券名称'))) idxName = i;
-            if (idxWeight < 0 && (t.includes('占净值比例') || t.includes('占比'))) idxWeight = i;
-          });
-          const rows = html.match(/<tbody[\s\S]*?<\/tbody>/i) || [];
-          const dataRows = rows.length ? rows[0].match(/<tr[\s\S]*?<\/tr>/gi) || [] : html.match(/<tr[\s\S]*?<\/tr>/gi) || [];
-          for (const r of dataRows) {
-            const tds = (r.match(/<td[\s\S]*?>([\s\S]*?)<\/td>/gi) || []).map(td => td.replace(/<[^>]*>/g, '').trim());
-            if (!tds.length) continue;
-            let code = '';
-            let name = '';
-            let weight = '';
-            if (idxCode >= 0 && tds[idxCode]) {
-              const m = tds[idxCode].match(/(\d{6})/);
-              code = m ? m[1] : tds[idxCode];
-            } else {
-              const codeIdx = tds.findIndex(txt => /^\d{6}$/.test(txt));
-              if (codeIdx >= 0) code = tds[codeIdx];
-            }
-            if (idxName >= 0 && tds[idxName]) {
-              name = tds[idxName];
-            } else if (code) {
-              const i = tds.findIndex(txt => txt && txt !== code && !/%$/.test(txt));
-              name = i >= 0 ? tds[i] : '';
-            }
-            if (idxWeight >= 0 && tds[idxWeight]) {
-              const wm = tds[idxWeight].match(/([\d.]+)\s*%/);
-              weight = wm ? `${wm[1]}%` : tds[idxWeight];
-            } else {
-              const wIdx = tds.findIndex(txt => /\d+(?:\.\d+)?\s*%/.test(txt));
-              weight = wIdx >= 0 ? tds[wIdx].match(/([\d.]+)\s*%/)?.[1] + '%' : '';
-            }
-            if (code || name || weight) {
-              holdings.push({ code, name, weight, change: null });
-            }
-          }
-          holdings = holdings.slice(0, 10);
-          const needQuotes = holdings.filter(h => /^\d{6}$/.test(h.code) || /^\d{5}$/.test(h.code));
-          if (needQuotes.length) {
-            try {
-              const tencentCodes = needQuotes.map(h => {
-                const cd = String(h.code || '');
-                if (/^\d{6}$/.test(cd)) {
-                  const pfx = cd.startsWith('6') || cd.startsWith('9') ? 'sh' : ((cd.startsWith('4') || cd.startsWith('8')) ? 'bj' : 'sz');
-                  return `s_${pfx}${cd}`;
-                }
-                if (/^\d{5}$/.test(cd)) {
-                  return `s_hk${cd}`;
-                }
-                return null;
-              }).filter(Boolean).join(',');
-              if (!tencentCodes) {
-                resolveH(holdings);
-                return;
-              }
-              const quoteUrl = `https://qt.gtimg.cn/q=${tencentCodes}`;
-              await new Promise((resQuote) => {
-                const scriptQuote = document.createElement('script');
-                scriptQuote.src = quoteUrl;
-                scriptQuote.onload = () => {
-                  needQuotes.forEach(h => {
-                    const cd = String(h.code || '');
-                    let varName = '';
-                    if (/^\d{6}$/.test(cd)) {
-                      const pfx = cd.startsWith('6') || cd.startsWith('9') ? 'sh' : ((cd.startsWith('4') || cd.startsWith('8')) ? 'bj' : 'sz');
-                      varName = `v_s_${pfx}${cd}`;
-                    } else if (/^\d{5}$/.test(cd)) {
-                      varName = `v_s_hk${cd}`;
-                    } else {
-                      return;
-                    }
-                    const dataStr = window[varName];
-                    if (dataStr) {
-                      const parts = dataStr.split('~');
-                      if (parts.length > 5) {
-                        h.change = parseFloat(parts[5]);
-                      }
-                    }
-                  });
-                  if (document.body.contains(scriptQuote)) document.body.removeChild(scriptQuote);
-                  resQuote();
-                };
-                scriptQuote.onerror = () => {
-                  if (document.body.contains(scriptQuote)) document.body.removeChild(scriptQuote);
-                  resQuote();
-                };
-                document.body.appendChild(scriptQuote);
-              });
-            } catch (e) {
-            }
-          }
-          resolveH(holdings);
-        }).catch(() => resolveH([]));
-      });
-
-      const trendPromise = new Promise(async (resolveTr) => {
-        try {
-          const pingUrl = `https://fund.eastmoney.com/pingzhongdata/${c}.js?v=${Date.now()}`;
-          await loadScript(pingUrl);
-
-          // Data_netWorthTrend 为 [{ x, y, equityReturn, unitMoney }, ...]
-          const trend = Array.isArray(window.Data_netWorthTrend)
-            ? window.Data_netWorthTrend
-            : [];
-          
-          let historyTrend = [];
-          let yesterdayChange = null;
-
-          if (trend.length > 0) {
-            // 仅保留最近 90 个点
-            const sliced = trend.slice(-90);
-            historyTrend = sliced.map((item) => ({
-              x: item.x,
-              y: item.y,
-              equityReturn: item.equityReturn,
-            }));
-
-            const last = sliced[sliced.length - 2];
-            if (last && typeof last.equityReturn === 'number') {
-              yesterdayChange = last.equityReturn;
-            }
-          }
-          resolveTr({ historyTrend, yesterdayChange });
-        } catch (e) {
-          resolveTr({ historyTrend: [], yesterdayChange: null });
-        }
-      });
+      // 估值命中时同样复用统一的数据源（重仓股走代理、走势走串行队列）
+      const holdingsPromise = fetchHoldingsByMobileApi(c).catch(() => []);
+      const trendPromise = fetchHistoryTrend(c).catch(() => ({ historyTrend: [], yesterdayChange: null }));
 
       Promise.all([tencentPromise, holdingsPromise, trendPromise]).then(([tData, holdings, trendData]) => {
         if (tData) {
@@ -353,14 +448,12 @@ export const fetchFundData = async (c) => {
       });
     };
     scriptGz.onerror = () => {
-      window.jsonpgz = originalJsonpgz;
-      if (document.body.contains(scriptGz)) document.body.removeChild(scriptGz);
-      reject(new Error('基金数据加载失败'));
+      // 上游返回 HTML 错误页时浏览器会因解析失败触发 onerror
+      useFallback();
     };
     document.body.appendChild(scriptGz);
-    setTimeout(() => {
-      if (document.body.contains(scriptGz)) document.body.removeChild(scriptGz);
-    }, 5000);
+    // 兜底：脚本能加载但始终不回调 jsonpgz 的情况，超时后同样降级
+    timer = setTimeout(useFallback, 6000);
   });
 };
 

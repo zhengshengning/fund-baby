@@ -80,6 +80,11 @@ jobs:
           EOF
       - name: Install dependencies
         run: ${{ steps.detect-package-manager.outputs.manager }} ${{ steps.detect-package-manager.outputs.command }}
+      - name: Remove server-only routes for static export
+        # app/api/holdings 是重仓股代理，依赖 Node 运行时；静态导出不支持 API 路由，
+        # 保留会导致 next build 直接失败。移除后前端会自动回退，重仓股在静态站点上
+        # 不可用，但不影响净值与历史走势展示。Docker / next start 部署仍保留该路由。
+        run: rm -rf app/api/holdings
       - name: Build with Next.js
         run: ${{ steps.detect-package-manager.outputs.runner }} next build
       - name: Upload artifact
